@@ -118,7 +118,7 @@ class MagneticAdaptiveplusGraphConvolution(nn.Module):
 
 
 class MAPplus(nn.Module):
-    def __init__(self, prop_steps, num_layers, q, use_att, feat_dim, hidden_dim, output_dim, dropout, label, test_idx, task_level):
+    def __init__(self, prop_steps, num_layers, q, use_att, feat_dim, hidden_dim, output_dim, dropout, task_level, label=None, test_idx=None):
         super(MAPplus, self).__init__()
         self.naive_graph_op = MagAdaptiveGraphOp(q)
         self.base_model = MagneticAdaptiveplusGraphConvolution(prop_steps, num_layers, use_att, \
@@ -126,8 +126,8 @@ class MAPplus(nn.Module):
 
         self.post_graph_op = None
 
-        self.label = label
-        self.test_idx = test_idx
+        # self.label = label
+        # self.test_idx = test_idx
 
         self.real_processed_feature = None
         self.imag_processed_feature = None
@@ -174,9 +174,9 @@ class MAPplus(nn.Module):
 
         output = self.base_model(real_processed_feature, imag_processed_feature, device)
 
-        if torch.equal(self.test_idx, idx):
-            self.base_model.soft_label = F.one_hot(self.label).float()
-            output_detach = output.detach().cpu()
-            self.base_model.soft_label[idx] = torch.softmax(output_detach[idx], dim=1)
+        # if torch.equal(self.test_idx, idx):
+        #     self.base_model.soft_label = F.one_hot(self.label).float()
+        #     output_detach = output.detach().cpu()
+        #     self.base_model.soft_label[idx] = torch.softmax(output_detach[idx], dim=1)
 
         return output[idx] if self.base_model.query_edges is None else output

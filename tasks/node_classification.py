@@ -32,17 +32,17 @@ class NodeClassification(BaseTask):
         self.loss_weight = loss_weight
 
         self.mini_batch = False
-        if train_batch_size is not None:
-            self.mini_batch = True
-            logger.info(f"Mini-batch training size: {train_batch_size}, eval and test size: {eval_batch_size}")
-            self.train_loader = DataLoader(
-                self.dataset.train_idx, batch_size=train_batch_size, shuffle=True, drop_last=False)
-            self.val_loader = DataLoader(
-                self.dataset.val_idx, batch_size=eval_batch_size, shuffle=False, drop_last=False)
-            self.test_loader = DataLoader(
-                self.dataset.test_idx, batch_size=eval_batch_size, shuffle=False, drop_last=False)
-            self.all_eval_loader = DataLoader(
-                range(self.dataset.num_node), batch_size=eval_batch_size, shuffle=False, drop_last=False)
+        # if train_batch_size is not None:
+        #     self.mini_batch = True
+        #     logger.info(f"Mini-batch training size: {train_batch_size}, eval and test size: {eval_batch_size}")
+        #     self.train_loader = DataLoader(
+        #         self.dataset.train_idx, batch_size=train_batch_size, shuffle=True, drop_last=False)
+        #     self.val_loader = DataLoader(
+        #         self.dataset.val_idx, batch_size=eval_batch_size, shuffle=False, drop_last=False)
+        #     self.test_loader = DataLoader(
+        #         self.dataset.test_idx, batch_size=eval_batch_size, shuffle=False, drop_last=False)
+        #     self.all_eval_loader = DataLoader(
+        #         range(self.dataset.num_node), batch_size=eval_batch_size, shuffle=False, drop_last=False)
 
         total_epochs_time = []
         two_hundred_epoch_time = []
