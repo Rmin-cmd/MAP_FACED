@@ -12,16 +12,21 @@ class MeanBandCollapse(object):
     def __call__(self, data: Data) -> Data:
         # data.edge_attr_all: Tensor [B, C, C]
         # 1) mean over B → [C, C]
-        A = data.edge_attr_all.mean(dim=0)
+        A = data.edge_attr_all.mean(dim=1)
 
-        # 2) to sparse
-        ei = A.to_sparse()._indices()
-        ea = A.to_sparse()._values()
-
-        data.edge_index    = ei
-        data.edge_attr     = ea
-        # optionally delete the raw bands
+        spcoo = A.to_sparse().coalesce()  # now indices are 2×E
+        data.edge_index = spcoo.indices()
+        data.edge_attr = spcoo.values()
         del data.edge_attr_all
+
+        # # 2) to sparse
+        # ei = A.to_sparse()._indices()
+        # ea = A.to_sparse()._values()
+        #
+        # data.edge_index    = ei
+        # data.edge_attr     = ea
+        # # optionally delete the raw bands
+        # del data.edge_attr_all
         return data
 
 
@@ -127,7 +132,7 @@ class CustomDataset(InMemoryDataset):
             # labels: one per window, so len = x.size(0)
             y = torch.tensor(label_repeat).long()
 
-            data_list.append(Data(x=x, edge_index=None, edge_attr=adj, y=y))
+            data_list.append(Data(x=x, edge_index=None, edge_attr_all=adj, y=y))
 
         if self.pre_filter is not None:
             data_list = [d for d in data_list if self.pre_filter(d)]
