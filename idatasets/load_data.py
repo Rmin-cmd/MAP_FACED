@@ -16,3 +16,15 @@ def load_directed_graph(logger, args, name, root, k, node_split, node_split_id, 
                                                                                        round(dataset.linkx_homophily, 4)))
 
     return dataset
+
+
+def load_graph_dataset(logger, args, name, root):
+    if name.lower() in ("graph_dataset"):
+        from idatasets.graph_dataset import GraphDataset
+        dataset = GraphDataset(args, name, root)
+    elif name.lower() in ("custom_dataset"):
+        from idatasets.custom_dataset import CustomDataset
+        dataset = CustomDataset(args, root)
+    else:
+        raise NotImplementedError
+    return dataset

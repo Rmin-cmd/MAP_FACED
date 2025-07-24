@@ -99,7 +99,6 @@ def train_valid(model, optimizer, Loss, epochs, train_loader, valid_loader, writ
             count  = 0.0
             X_real, X_imag = X_real.reshape([-1, 30, 5]), X_imag.reshape([-1, 30, 5])
             # preds = model.model_forward(X_real, X_imag, graph)
-            for
             preds = model.model_forward(X_real.shape[0], device)
 
             # Use UnifiedLoss instance
