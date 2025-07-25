@@ -5,7 +5,10 @@ import numpy as np
 import h5py
 from torch_geometric.data import InMemoryDataset, Data
 from tqdm import tqdm
-from utils import load_srt_de  # adapt import to wherever your label loader is
+from utils import load_srt_de # adapt import to wherever your label loader is
+from torch_sparse import coalesce
+from idatasets.base_data import Graph
+from torch.utils.data import ConcatDataset
 
 
 class MeanBandCollapse(object):
@@ -13,7 +16,6 @@ class MeanBandCollapse(object):
         # data.edge_attr_all: Tensor [B, C, C]
         # 1) mean over B → [C, C]
         A = data.edge_attr_all.mean(dim=1)
-
         spcoo = A.to_sparse().coalesce()  # now indices are 2×E
         data.edge_index = spcoo.indices()
         data.edge_attr = spcoo.values()
@@ -116,31 +118,43 @@ class CustomDataset(InMemoryDataset):
 
         # 6) Build Data objects
         data_list = []
+        label_list = []
         for i in tqdm(sel_idx, desc=f"Building {self.split} fold {args.fold}"):
             # adjacency for subject i: assume shape [?, nodes, nodes]
             # Here we pick the first bias dimension if exists
             adj = torch.from_numpy(A_pdc[i]).float()
             adj = np.transpose(adj, axes=[1, 2, 0, 3, 4]).reshape(-1, 5, adj.shape[3], adj.shape[4])
+            adj = adj.mean(dim=1)
             # edge_index = adj.to_sparse()._indices()
-            # edge_index = [adj[:, i, :, :].to_sparse()._indices() for i in range(adj.shape[1])]
 
             # features: flatten along all but feature-dim
             x = torch.from_numpy(
-                feature_pdc[i].reshape(-1, feature_pdc.shape[-1])
+                feature_pdc[i].reshape(-1, 30, 5)
             ).float()
 
             # labels: one per window, so len = x.size(0)
-            y = torch.tensor(label_repeat).long()
+            # y = torch.tensor(label_repeat).long()
+            label_list.append(torch.tensor(label_repeat).long())
+            for j, graph in enumerate(adj):
+                num_node = x[j].shape[0]
+                edge_index = graph.to_sparse()._indices()
+                edge_index, _ = coalesce(edge_index, None, x[j].size(0), x[j].size(0))
+                undi_edge_index = torch.unique(edge_index, dim=1)
+                # undi_edge_index = remove_self_loops_weights(undi_edge_index)[0]
 
-            data_list.append(Data(x=x, edge_index=None, edge_attr_all=adj, y=y))
+                row, col = undi_edge_index
+                edge_weight = graph[row, col]
+
+                data_list.append(Graph(row, col, edge_weight, num_node, x=x[j], y=None))
 
         if self.pre_filter is not None:
             data_list = [d for d in data_list if self.pre_filter(d)]
         if self.pre_transform is not None:
             data_list = [self.pre_transform(d) for d in data_list]
 
-        data, slices = self.collate(data_list)
-        torch.save((data, slices), self.processed_paths[0])
+        # data, slices = self.collate(data_list)
+        torch.save(ConcatDataset(data_list))
+        # torch.save((torch.tensor(data_list), torch.tensor(label_list)), self.processed_paths[0])
 
     def __repr__(self):
         return f'{self.__class__.__name__}(fold={self.args.fold}, split={self.split}, ' \

@@ -50,27 +50,26 @@ if __name__ == "__main__":
         logger.info(f"\n=== Fold {fold+1}/{args.n_folds} ===")
         args.fold = fold
 
-        # --- 1) Load dataset for this fold (train/val/test split is handled in CustomDataset) ---
+        # --- 1) Load dataset for this fold ---
         t0 = time.time()
-        dataset = load_graph_dataset(
-            logger, args,
-            name=args.graph_data_name,
-            root=args.data_root
-        )
+        # The dataset object now represents a single fold
+        dataset = load_graph_dataset(logger, args, name=args.graph_data_name, root=args.data_root)
         t1 = time.time()
         logger.info(f"Loaded Fold {fold} dataset in {t1-t0:.2f}s; "
                     f"#features={dataset.num_features}, #classes={dataset.num_classes}")
 
+        # The CustomDataset class now handles the train/val/test split internally
+        train_dataset = dataset.train_dataset
+        val_dataset = dataset.val_dataset
+        test_dataset = dataset.test_dataset
+
         # --- 2) Init model & task runner ---
-        model_zoo = ModelZoo(
-            logger, args, 30,
-            dataset.num_features,
-            dataset.num_classes,
-            None, "graph"
-        )
+        model_zoo = ModelZoo(logger, args, 30, dataset.num_features, dataset.num_classes, None, "graph")
         task = GraphClassification(
             logger,
-            dataset,
+            train_dataset,  # Pass the training dataset
+            val_dataset,    # Pass the validation dataset
+            test_dataset,   # Pass the test dataset
             model_zoo,
             normalize_times=args.normalize_times,
             lr=args.lr,

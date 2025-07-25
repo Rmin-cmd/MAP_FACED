@@ -25,6 +25,12 @@ fake = types.ModuleType("scipy.sparse._csr")
 fake.csr_matrix = csr_matrix
 sys.modules["scipy.sparse._csr"] = fake
 
+
+def remove_self_loops_weights(edge_weight, edge_index):
+    mask = edge_index[0] != edge_index[1]
+    edge_weight = edge_weight[mask]
+    return edge_weight
+
 def load_srt_de(data, channel_norm,label_type, num_windows):
     # isFilt: False  filten:1   channel_norm: True
     n_subs = 123

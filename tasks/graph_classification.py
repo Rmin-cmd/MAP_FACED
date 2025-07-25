@@ -39,25 +39,24 @@ def graph_cls_evaluate(model, loader, device):
 
 
 class GraphClassification(BaseTask):
-    def __init__(self, logger, dataset, model, normalize_times, lr, weight_decay, epochs, early_stop, device,
-                 loss_fn=nn.CrossEntropyLoss(), train_batch_size=None, eval_batch_size=None):
+    def __init__(self, logger, train_dataset, val_dataset, test_dataset, model_zoo, normalize_times, lr,
+                 weight_decay, epochs, early_stop, device, train_batch_size=32, eval_batch_size=32):
         super(GraphClassification, self).__init__()
         self.logger = logger
         self.normalize_times = normalize_times
-        self.normalize_record = {"val_acc": [], "test_acc": []}
-
-        self.dataset = dataset
-        self.model_zoo = model
-        self.model = model.model_init()
+        self.train_dataset = train_dataset
+        self.val_dataset = val_dataset
+        self.test_dataset = test_dataset
+        self.model_zoo = model_zoo
+        self.model = self.model_zoo.model_init().to(device)
         self.optimizer = Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
         self.epochs = epochs
         self.early_stop = early_stop
-        self.loss_fn = loss_fn
         self.device = device
-
-        self.train_loader = DataLoader(self.dataset.train_dataset, batch_size=train_batch_size, shuffle=True)
-        self.val_loader = DataLoader(self.dataset.val_dataset, batch_size=eval_batch_size, shuffle=False)
-        self.test_loader = self.val_loader
+        self.criterion = F.nll_loss
+        self.train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True)
+        self.val_loader = DataLoader(val_dataset, batch_size=eval_batch_size, shuffle=False)
+        self.test_loader = DataLoader(test_dataset, batch_size=eval_batch_size, shuffle=False)
 
         total_epochs_time = []
         two_hundred_epoch_time = []
@@ -103,7 +102,7 @@ class GraphClassification(BaseTask):
                 break
             t = time.time()
 
-            loss_train = graph_cls_train(self.model, self.train_loader, self.device, self.optimizer, self.loss_fn)
+            loss_train = graph_cls_train(self.model, self.train_loader, self.device, self.optimizer, self.criterion)
             acc_val = graph_cls_evaluate(self.model, self.val_loader, self.device)
             acc_test = graph_cls_evaluate(self.model, self.test_loader, self.device)
 
@@ -124,8 +123,5 @@ class GraphClassification(BaseTask):
             self.logger.info("Optimization Finished!")
             self.logger.info("Total training time is: {:.4f}s".format(time.time() - t_total))
             self.logger.info(f'Best val: {best_val:.4f}, best test: {best_test:.4f}')
-
-        self.normalize_record["val_acc"].append(best_val)
-        self.normalize_record["test_acc"].append(best_test)
 
         return best_test, time_list
