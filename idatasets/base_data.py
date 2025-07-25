@@ -33,7 +33,22 @@ class Node:
 
 
 class Graph:
-    def __init__(self, row, col, edge_weight, num_node, x=None, y=None):
+    def __init__(self, row=None, col=None, edge_weight=None, num_node=None,
+                       x=None, y=None):
+        # if called with no args, just initialize empty tensors
+        if row is None:
+            self.row = torch.empty((0,), dtype=torch.long)
+            self.col = torch.empty((0,), dtype=torch.long)
+            self.edge_weight = torch.empty((0,), dtype=torch.float)
+            self.num_edge = 0
+            self.sparse_matrix = csr_matrix((0, 0))
+            self.num_node = 0
+            self.x = None
+            self.y = None
+            self.adj = self.sparse_matrix
+            self.num_features = None
+            self.num_classes = None
+            return
         self.edge = Edge(row, col, edge_weight, num_node)
         self.node = Node(num_node, x, y)
         self.num_node = self.node.num_node
@@ -48,4 +63,11 @@ class Graph:
             self.num_classes = None
         self.row_sum = self.adj.sum(axis=1)
         self.node_degrees = torch.LongTensor(self.row_sum).squeeze(1)
+
+    @property
+    def num_graphs(self):
+        """Returns the number of graphs in the dataset."""
+        if hasattr(self, '__num_graphs__'):
+            return self.__num_graphs__
+        return 1
 

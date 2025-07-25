@@ -158,13 +158,13 @@ class MAPplus(nn.Module):
             self.real_processed_feature = torch.FloatTensor(data.x)
             self.imag_processed_feature = torch.FloatTensor(data.x)
         else:
-            self.base_model.num_node = data.num_nodes
+            self.base_model.num_node = data.num_node
             # self.base_model.row, self.base_model.col, self.base_model.edge_weight_sym, self.base_model.exp_weight_q, \
             # self.base_model.edge_entropy, self.base_model.edge_cluster_coefficient, _ \
             #     = self.naive_graph_op.construct_adj(data.edge_index, data.num_nodes)
             self.base_model.row, self.base_model.col, self.base_model.edge_weight_sym, self.base_model.exp_weight_q, \
             self.base_model.edge_entropy, self.base_model.edge_cluster_coefficient, _ \
-                = self.naive_graph_op.construct_adj(data_to_sparse_tensor_torch_sparse(data))
+                = self.naive_graph_op.construct_adj(data.adj)
             self.base_model.indices = torch.stack([self.base_model.row, self.base_model.col], dim=0)
             self.base_model.edge_entropy = self.normalize(self.base_model.edge_entropy)
             self.base_model.edge_cluster_coefficient = self.normalize(self.base_model.edge_cluster_coefficient)
@@ -205,5 +205,5 @@ class MAPplus(nn.Module):
             self.base_model.edge_cluster_coefficient = self.base_model.edge_cluster_coefficient.to(device)
             real_processed_feature = data.x.to(device)
             imag_processed_feature = data.x.to(device)
-            output = self.base_model(real_processed_feature, imag_processed_feature, device, data.batch)
+            output = self.base_model(real_processed_feature, imag_processed_feature, device)
             return output

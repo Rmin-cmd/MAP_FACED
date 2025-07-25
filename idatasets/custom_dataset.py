@@ -3,87 +3,64 @@ import torch
 import scipy.io as sio
 import numpy as np
 import h5py
-from torch_geometric.data import InMemoryDataset, Data
+from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
-from utils import load_srt_de # adapt import to wherever your label loader is
+from sklearn.model_selection import KFold
+from typing import List
+from utils import load_srt_de  # adapt import to wherever your label loader is
+from scipy.sparse import csr_matrix
+from torch_geometric.data import Data
 from torch_sparse import coalesce
 from idatasets.base_data import Graph
-from torch.utils.data import ConcatDataset
 
 
 class MeanBandCollapse(object):
     def __call__(self, data: Data) -> Data:
         # data.edge_attr_all: Tensor [B, C, C]
-        # 1) mean over B → [C, C]
+        # mean over B → [C, C]
         A = data.edge_attr_all.mean(dim=1)
-        spcoo = A.to_sparse().coalesce()  # now indices are 2×E
+        spcoo = A.to_sparse().coalesce()
         data.edge_index = spcoo.indices()
         data.edge_attr = spcoo.values()
         del data.edge_attr_all
-
-        # # 2) to sparse
-        # ei = A.to_sparse()._indices()
-        # ea = A.to_sparse()._values()
-        #
-        # data.edge_index    = ei
-        # data.edge_attr     = ea
-        # # optionally delete the raw bands
-        # del data.edge_attr_all
         return data
 
 
-class CustomDataset(InMemoryDataset):
+class CustomDataset(Dataset):
+    """
+    A simple Dataset that builds per-fold Data objects and returns (Data, label) tuples.
+    No internal collate is used; external DataLoader should supply a custom collate_fn if needed.
+    """
+
     def __init__(self, args, root, split='train', transform=None, pre_transform=None):
-        """
-        split: one of 'train', 'val', or 'test' (here val and test use the same fold-split logic)
-        args must have:
-          - args.n_subs       : total number of subjects
-          - args.n_folds      : total number of folds
-          - args.fold         : current fold index [0..n_folds-1]
-          - args.pdc_path     : path to the .mat or .h5 PDC file
-          - args.feature_root_dir : directory containing de_lds_fold{i}.mat
-          - args.num_classes  : 2 or 9
-        """
         self.args = args
+        self.root = root
         self.split = split
-        super().__init__(root, transform, pre_transform)
-        self.data, self.slices = torch.load(self.processed_paths[0])
+        self.transform = transform
+        self.pre_transform = pre_transform
 
-    @property
-    def raw_file_names(self):
-        # one PDC file plus one de_lds_foldX.mat
-        return [os.path.basename(self.args.pdc_path),
-                f'de_lds_fold{self.args.fold}.mat']
+        # Build the list of Data and labels once
+        self.graphs, self.labels = self._build_graphs()
 
-    @property
-    def processed_file_names(self):
-        return [f'data_fold{self.args.fold}_{self.split}.pt']
-
-    def download(self):
-        pass
-
-    def process(self):
+    def _build_graphs(self):
         args = self.args
+        # load PDC
+        if args.pdc_path.endswith('.h5'):
+            with h5py.File(args.pdc_path, 'r') as f:
+                A_pdc = np.array(f['connectivity'])
+        else:
+            A_pdc = sio.loadmat(args.pdc_path)['data']
+
+        # load features
+        feat_mat = os.path.join(args.feature_root_dir,
+                                f'de_lds_fold{args.fold}.mat')
+        feature_pdc = sio.loadmat(feat_mat)['de_lds']
+
+        # reshape by classes
         num_windows = 11
-
-        # 1) Load PDC (connectivity) data
-        if self.args.pdc_path.endswith('.h5'):
-            with h5py.File(self.args.pdc_path, 'r') as f:
-                A_pdc = np.array(f['connectivity'])  # [n_subs, ...]
-        else:  # assume .mat
-            A_pdc = sio.loadmat(self.args.pdc_path)['data']  # [n_subs, ...]
-
-        # 2) Load features for this fold
-        feat_mat = os.path.join(self.args.feature_root_dir,
-                                f'de_lds_fold{self.args.fold}.mat')
-        feature_pdc = sio.loadmat(feat_mat)['de_lds']  # [n_subs, vids, ch, windows, points]
-
-        # 3) Reshape depending on number of classes
         if args.num_classes == 9:
             label_type = 'cls9'
-            # features already in shape [subs, vids, ch, windows, pts]
         elif args.num_classes == 2:
-            # select only the 2-class vids and flatten
             feature_pdc = feature_pdc.reshape(
                 feature_pdc.shape[0], -1, num_windows, feature_pdc.shape[2]
             )
@@ -97,7 +74,7 @@ class CustomDataset(InMemoryDataset):
         else:
             raise ValueError("args.num_classes must be 2 or 9")
 
-        # 4) Compute repeated labels per window
+        # labels
         label_repeat = load_srt_de(feature_pdc, True, label_type, num_windows)
         # label_repeat: [n_subs, n_total_windows]
 
@@ -116,9 +93,8 @@ class CustomDataset(InMemoryDataset):
         else:  # 'val' or 'test'
             sel_idx = val_idx
 
-        # 6) Build Data objects
-        data_list = []
-        label_list = []
+        graphs = []
+        labels = []
         for i in tqdm(sel_idx, desc=f"Building {self.split} fold {args.fold}"):
             # adjacency for subject i: assume shape [?, nodes, nodes]
             # Here we pick the first bias dimension if exists
@@ -134,7 +110,7 @@ class CustomDataset(InMemoryDataset):
 
             # labels: one per window, so len = x.size(0)
             # y = torch.tensor(label_repeat).long()
-            label_list.append(torch.tensor(label_repeat).long())
+            labels.append(torch.tensor(label_repeat).long())
             for j, graph in enumerate(adj):
                 num_node = x[j].shape[0]
                 edge_index = graph.to_sparse()._indices()
@@ -145,46 +121,27 @@ class CustomDataset(InMemoryDataset):
                 row, col = undi_edge_index
                 edge_weight = graph[row, col]
 
-                data_list.append(Graph(row, col, edge_weight, num_node, x=x[j], y=None))
+                graphs.append(Graph(row, col, edge_weight, num_node, x=x[j], y=None))
 
-        if self.pre_filter is not None:
-            data_list = [d for d in data_list if self.pre_filter(d)]
-        if self.pre_transform is not None:
-            data_list = [self.pre_transform(d) for d in data_list]
+            if self.pre_transform:
+                data = self.pre_transform(data)
+            if self.transform:
+                data = self.transform(data)
+            # graphs.append(data)
+            # labels.append(int(y) if y.numel() == 1 else y)
 
-        # data, slices = self.collate(data_list)
-        torch.save(ConcatDataset(data_list))
-        # torch.save((torch.tensor(data_list), torch.tensor(label_list)), self.processed_paths[0])
+        return graphs, torch.cat(labels)
 
-    def __repr__(self):
-        return f'{self.__class__.__name__}(fold={self.args.fold}, split={self.split}, ' \
-               f'items={self.data.num_graphs})'
+    def __len__(self):
+        return len(self.graphs)
 
-    @property
-    def train_dataset(self):
-        if self.split == 'train':
-            # return self
-            return CustomDataset(self.args, self.root, split='train',
-                             transform=MeanBandCollapse(),
-                             pre_transform=self.pre_transform)
+    def __getitem__(self, idx):
+        # return a (Data, label) tuple
+        return self.graphs[idx], self.labels[idx]
 
-    @property
-    def val_dataset(self):
-        if self.split == 'val':
-            # return self
-            return CustomDataset(self.args, self.root, split='val',
-                             transform=MeanBandCollapse(),
-                             pre_transform=self.pre_transform)
 
-    @property
-    def test_dataset(self):
-        # here test == val
-        return self.val_dataset
+# Example of custom collate_fn to use in DataLoader
 
-    @property
-    def num_features(self):
-        return self.data.x.size(1)
-
-    @property
-    def num_classes(self):
-        return int(self.data.y.max().item()) + 1
+def graph_collate(batch):
+    graphs, labels = zip(*batch)
+    return list(graphs), torch.stack([torch.tensor(l) if not isinstance(l, torch.Tensor) else l for l in labels])

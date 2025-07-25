@@ -16,6 +16,7 @@ from logger import Logger
 from models.model_init import ModelZoo
 from tasks.graph_classification import GraphClassification
 from utils import seed_everything, get_params
+from idatasets.custom_dataset import CustomDataset
 
 warnings.filterwarnings("ignore")
 
@@ -53,18 +54,19 @@ if __name__ == "__main__":
         # --- 1) Load dataset for this fold ---
         t0 = time.time()
         # The dataset object now represents a single fold
-        dataset = load_graph_dataset(logger, args, name=args.graph_data_name, root=args.data_root)
+        # dataset = load_graph_dataset(logger, args, name=args.graph_data_name, root=args.data_root)
         t1 = time.time()
-        logger.info(f"Loaded Fold {fold} dataset in {t1-t0:.2f}s; "
-                    f"#features={dataset.num_features}, #classes={dataset.num_classes}")
+        # logger.info(f"Loaded Fold {fold} dataset in {t1-t0:.2f}s; "
+        #             f"#features={dataset.num_features}, #classes={dataset.num_classes}")
 
         # The CustomDataset class now handles the train/val/test split internally
-        train_dataset = dataset.train_dataset
-        val_dataset = dataset.val_dataset
-        test_dataset = dataset.test_dataset
+        train_dataset = CustomDataset(args, root=args.data_root, split='train')
+        val_dataset = CustomDataset(args, root=args.data_root, split='val')
+        test_dataset = CustomDataset(args, root=args.data_root, split='val')
 
         # --- 2) Init model & task runner ---
-        model_zoo = ModelZoo(logger, args, 30, dataset.num_features, dataset.num_classes, None, "graph")
+        # model_zoo = ModelZoo(logger, args, 30, dataset.num_features, dataset.num_classes, None, "graph")
+        model_zoo = ModelZoo(logger, args, 30, 5, 9, None, "graph")
         task = GraphClassification(
             logger,
             train_dataset,  # Pass the training dataset
