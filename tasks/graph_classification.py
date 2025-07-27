@@ -4,9 +4,7 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
-# from torch.utils.data import DataLoader
-# from torch_geometric.data import DataLoader
-from torch.utils.data import DataLoader
+from torch_geometric.data import DataLoader
 from tasks.base_task import BaseTask
 from tasks.utils import accuracy
 from tqdm import tqdm
@@ -18,17 +16,11 @@ import torch.nn as nn
 def graph_cls_train(model, loader, device, optimizer, loss_fn):
     model.train()
     total_loss = 0
-    for i, (data, label) in enumerate(loader):
-        # data = [dt.to(device) for dt in data]
-        label = label.to(device)
+    for data in loader:
+        data = data.to(device)
         optimizer.zero_grad()
-        out_list = []
-        for graph in data:
-            # for g in graph:
-            out = model.model_forward(graph, device)
-            out_list.append(out)
-        out = torch.cat(out_list)
-        loss = loss_fn(out, label)
+        out = model.model_forward(data, device)
+        loss = loss_fn(out, data.y)
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
@@ -39,40 +31,21 @@ def graph_cls_train(model, loader, device, optimizer, loss_fn):
 def graph_cls_evaluate(model, loader, device):
     model.eval()
     correct = 0
-    for data, label in loader:
-        # data = [dt.to(device) for dt in data]
-        label = label.to(device)
-        out_list = []
-        for graph in data:
-            # for g in graph:
-            out = model.model_forward(graph, device)
-            out_list.append(out)
-        out = torch.cat(out_list)
+    for data in loader:
+        data = data.to(device)
+        out = model.model_forward(data, device)
         pred = out.argmax(dim=1)
-        correct += int((pred == label).sum())
+        correct += int((pred == data.y).sum())
     return correct / len(loader.dataset)
-
-# @torch.no_grad()
-# def graph_cls_evaluate(model, loader, device):
-#     model.eval()
-#     correct = 0
-#     for data in loader:
-#         data = data.to(device)
-#         out = model.model_forward(data, device)
-#         pred = out.argmax(dim=1)
-#         correct += int((pred == data.y).sum())
-#     return correct / len(loader.dataset)
 
 
 class GraphClassification(BaseTask):
-    def __init__(self, logger, train_dataset, val_dataset, test_dataset, model_zoo, normalize_times, lr,
+    def __init__(self, logger, dataset, model_zoo, normalize_times, lr,
                  weight_decay, epochs, early_stop, device, train_batch_size=32, eval_batch_size=32):
         super(GraphClassification, self).__init__()
         self.logger = logger
         self.normalize_times = normalize_times
-        self.train_dataset = train_dataset
-        self.val_dataset = val_dataset
-        self.test_dataset = test_dataset
+        self.dataset = dataset
         self.model_zoo = model_zoo
         self.model = self.model_zoo.model_init().to(device)
         self.optimizer = Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -80,9 +53,9 @@ class GraphClassification(BaseTask):
         self.early_stop = early_stop
         self.device = device
         self.criterion = nn.CrossEntropyLoss()
-        self.train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, collate_fn=graph_collate)
-        self.val_loader = DataLoader(val_dataset, batch_size=eval_batch_size, shuffle=False, collate_fn=graph_collate)
-        self.test_loader = DataLoader(test_dataset, batch_size=eval_batch_size, shuffle=False, collate_fn=graph_collate)
+        self.train_loader = DataLoader(self.dataset.train_dataset, batch_size=train_batch_size, shuffle=True)
+        self.val_loader = DataLoader(self.dataset.val_dataset, batch_size=eval_batch_size, shuffle=False)
+        self.test_loader = DataLoader(self.dataset.test_dataset, batch_size=eval_batch_size, shuffle=False)
 
         total_epochs_time = []
         two_hundred_epoch_time = []
