@@ -12,22 +12,20 @@ from tasks.utils import accuracy
 from tqdm import tqdm
 import torch
 from idatasets.custom_dataset import graph_collate
-import torch.nn as nn
 
 
 def graph_cls_train(model, loader, device, optimizer, loss_fn):
     model.train()
     total_loss = 0
     for i, (data, label) in enumerate(loader):
-        # data = [dt.to(device) for dt in data]
         label = label.to(device)
         optimizer.zero_grad()
-        out_list = []
-        for graph in data:
-            # for g in graph:
-            out = model.model_forward(graph, device)
-            out_list.append(out)
+
+        # Use torch.jit.fork for parallel processing
+        futures = [torch.jit.fork(model.model_forward, graph, device) for graph in data]
+        out_list = [torch.jit.wait(future) for future in futures]
         out = torch.cat(out_list)
+
         loss = loss_fn(out, label)
         loss.backward()
         optimizer.step()
@@ -40,17 +38,17 @@ def graph_cls_evaluate(model, loader, device):
     model.eval()
     correct = 0
     for data, label in loader:
-        # data = [dt.to(device) for dt in data]
         label = label.to(device)
-        out_list = []
-        for graph in data:
-            # for g in graph:
-            out = model.model_forward(graph, device)
-            out_list.append(out)
+
+        # Use torch.jit.fork for parallel processing
+        futures = [torch.jit.fork(model.model_forward, graph, device) for graph in data]
+        out_list = [torch.jit.wait(future) for future in futures]
         out = torch.cat(out_list)
+
         pred = out.argmax(dim=1)
         correct += int((pred == label).sum())
     return correct / len(loader.dataset)
+
 
 # @torch.no_grad()
 # def graph_cls_evaluate(model, loader, device):
@@ -80,9 +78,12 @@ class GraphClassification(BaseTask):
         self.early_stop = early_stop
         self.device = device
         self.criterion = nn.CrossEntropyLoss()
-        self.train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, collate_fn=graph_collate)
-        self.val_loader = DataLoader(val_dataset, batch_size=eval_batch_size, shuffle=False, collate_fn=graph_collate)
-        self.test_loader = DataLoader(test_dataset, batch_size=eval_batch_size, shuffle=False, collate_fn=graph_collate)
+        self.train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True,
+                                       collate_fn=graph_collate, num_workers=6, pin_memory=True)
+        self.val_loader = DataLoader(val_dataset, batch_size=eval_batch_size, shuffle=False, collate_fn=graph_collate,
+                                     num_workers=6, pin_memory=True)
+        self.test_loader = DataLoader(test_dataset, batch_size=eval_batch_size, shuffle=False, collate_fn=graph_collate,
+                                      num_workers=6, pin_memory=True)
 
         total_epochs_time = []
         two_hundred_epoch_time = []
