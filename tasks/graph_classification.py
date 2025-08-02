@@ -21,7 +21,7 @@ def graph_cls_train(model, loader, device, optimizer, loss_fn):
         label = label.to(device)
         optimizer.zero_grad()
         # out = model(data)
-        out = model.forward(data, device)
+        out = model.model_forward(data, device)
         loss = loss_fn(out, label)
         loss.backward()
         optimizer.step()
