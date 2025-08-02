@@ -4,6 +4,7 @@ import torch
 
 from torch_scatter import scatter_add
 from torch_sparse import coalesce
+from graph_operator.directed import monkey_patch_csr_matrix
 
 
 def adj_to_directed_symmetric_map_norm(adj, q):
