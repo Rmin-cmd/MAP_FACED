@@ -1,5 +1,5 @@
 import time
-
+import os
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
@@ -64,7 +64,7 @@ def graph_cls_evaluate(model, loader, device):
 
 class GraphClassification(BaseTask):
     def __init__(self, logger, train_dataset, val_dataset, test_dataset, model_zoo, normalize_times, lr,
-                 weight_decay, epochs, early_stop, device, train_batch_size=32, eval_batch_size=32):
+                 weight_decay, epochs, early_stop, device, args, train_batch_size=32, eval_batch_size=32):
         super(GraphClassification, self).__init__()
         self.logger = logger
         self.normalize_times = normalize_times
@@ -77,6 +77,7 @@ class GraphClassification(BaseTask):
         self.epochs = epochs
         self.early_stop = early_stop
         self.device = device
+        self.args = args
         self.criterion = nn.CrossEntropyLoss()
         self.train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True,
                                        collate_fn=graph_collate, num_workers=6, pin_memory=True)
@@ -120,10 +121,23 @@ class GraphClassification(BaseTask):
         best_val = 0.
         best_test = 0.
         stop = 0
+        start_epoch = 0
         time_list = []
 
+        # Load from checkpoint if available and flag is set
+        log_dir = os.path.join("log", "graph", self.args.model_name, self.args.graph_data_name)
+        checkpoint_path = os.path.join(log_dir, f"checkpoint_fold_{self.args.fold}.pth")
+        if self.args.resume_from_checkpoint and os.path.exists(checkpoint_path):
+            checkpoint = torch.load(checkpoint_path)
+            self.model.load_state_dict(checkpoint['model_state_dict'])
+            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            start_epoch = checkpoint['epoch'] + 1
+            best_val = checkpoint['best_val_acc']
+            best_test = checkpoint['best_test_acc']
+            self.logger.info(f"Resuming from fold {self.args.fold}, epoch {start_epoch}. Best val acc: {best_val:.4f}")
+
         t_total = time.time()
-        for epoch in tqdm(range(self.epochs)):
+        for epoch in tqdm(range(start_epoch, self.epochs)):
             if stop > self.early_stop:
                 self.logger.info("Early stop!")
                 break
@@ -144,6 +158,19 @@ class GraphClassification(BaseTask):
                 best_val = acc_val
                 best_test = acc_test
                 stop = 0
+
+                # Save checkpoint
+                log_dir = os.path.join("log", "graph", self.args.model_name, self.args.graph_data_name)
+                checkpoint_path = os.path.join(log_dir, f"checkpoint_fold_{self.args.fold}.pth")
+                torch.save({
+                    'epoch': epoch,
+                    'model_state_dict': self.model.state_dict(),
+                    'optimizer_state_dict': self.optimizer.state_dict(),
+                    'best_val_acc': best_val,
+                    'best_test_acc': best_test,
+                }, checkpoint_path)
+                self.logger.info(f"Epoch {epoch+1}: New best validation accuracy: {best_val:.4f}. Checkpoint saved.")
+
             stop += 1
 
         if self.normalize_times == 1:
