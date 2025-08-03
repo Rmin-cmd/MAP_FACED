@@ -11,6 +11,8 @@ from tasks.utils import accuracy
 from tqdm import tqdm
 import torch
 from idatasets.custom_dataset import graph_collate
+import scipy
+print(scipy.__version__)
 
 
 def graph_cls_train(model, loader, device, optimizer, loss_fn):
