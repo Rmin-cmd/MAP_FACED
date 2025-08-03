@@ -42,7 +42,7 @@ def graph_cls_evaluate(model, loader, device):
     model.eval()
     correct = 0
     for data in loader:
-        data = data.to(device)
+        # data = data.to(device)
         out_list = []
         for graph in data:
             # for g in graph:
