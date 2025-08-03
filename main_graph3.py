@@ -46,8 +46,23 @@ if __name__ == "__main__":
 
     # We'll collect best test accuracies across folds
     test_acc_folds = []
+    start_fold = 0
 
-    for fold in range(args.n_folds):
+    if args.resume_from_checkpoint:
+        for fold in range(args.n_folds):
+            checkpoint_path = os.path.join(log_dir, f"checkpoint_fold_{fold}.pth")
+            if os.path.exists(checkpoint_path):
+                # This fold is considered complete, load its accuracy and skip
+                checkpoint = torch.load(checkpoint_path)
+                test_acc_folds.append(checkpoint['best_test_acc'])
+                logger.info(f"Fold {fold} already completed. Loaded test accuracy: {checkpoint['best_test_acc']:.4f}")
+                start_fold = fold + 1
+            else:
+                # This is the first incomplete fold
+                logger.info(f"Resuming training from fold {fold}")
+                break
+
+    for fold in range(start_fold, args.n_folds):
         logger.info(f"\n=== Fold {fold+1}/{args.n_folds} ===")
         args.fold = fold
 
@@ -79,6 +94,7 @@ if __name__ == "__main__":
             epochs=args.num_epochs,
             early_stop=args.early_stop,
             device=device,
+            args=args,
             train_batch_size=args.train_batch_size,
             eval_batch_size=args.eval_batch_size
         )

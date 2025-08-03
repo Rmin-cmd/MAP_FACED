@@ -14,3 +14,4 @@ def add_training_config(parser):
     parser.add_argument('--weight_decay', help='weight decay of gnn model', type=float, default=5e-4)
     parser.add_argument('--train_batch_size', help='training batch size', type=int, default=1000)
     parser.add_argument('--eval_batch_size', help='val and test batch size', type=int, default=1000)
+    parser.add_argument('--resume_from_checkpoint', action='store_true', help='resume training from the last checkpoint')
