@@ -4,6 +4,7 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
+# from torch.utils.data import DataLoader
 # from torch_geometric.data import DataLoader
 from torch.utils.data import DataLoader
 from tasks.base_task import BaseTask
@@ -11,25 +12,20 @@ from tasks.utils import accuracy
 from tqdm import tqdm
 import torch
 from idatasets.custom_dataset import graph_collate
-import scipy
-print(scipy.__version__)
 
 
 def graph_cls_train(model, loader, device, optimizer, loss_fn):
     model.train()
     total_loss = 0
     for i, (data, label) in enumerate(loader):
-        # data = data.to(device)
         label = label.to(device)
         optimizer.zero_grad()
-        # out = model(data)
-        out_list = []
-        for graph in data:
-            # for g in graph:
-            out = model.model_forward(graph, device)
-            out_list.append(out)
+
+        # Use torch.jit.fork for parallel processing
+        futures = [torch.jit.fork(model.model_forward, graph, device) for graph in data]
+        out_list = [torch.jit.wait(future) for future in futures]
         out = torch.cat(out_list)
-        # out = model.model_forward(data, device)
+
         loss = loss_fn(out, label)
         loss.backward()
         optimizer.step()
@@ -41,18 +37,29 @@ def graph_cls_train(model, loader, device, optimizer, loss_fn):
 def graph_cls_evaluate(model, loader, device):
     model.eval()
     correct = 0
-    for data in loader:
-        # data = data.to(device)
-        out_list = []
-        for graph in data:
-            # for g in graph:
-            out = model.model_forward(graph, device)
-            out_list.append(out)
+    for data, label in loader:
+        label = label.to(device)
+
+        # Use torch.jit.fork for parallel processing
+        futures = [torch.jit.fork(model.model_forward, graph, device) for graph in data]
+        out_list = [torch.jit.wait(future) for future in futures]
         out = torch.cat(out_list)
-        # out = model.model_forward(data, device)
+
         pred = out.argmax(dim=1)
-        correct += int((pred == data.y).sum())
+        correct += int((pred == label).sum())
     return correct / len(loader.dataset)
+
+
+# @torch.no_grad()
+# def graph_cls_evaluate(model, loader, device):
+#     model.eval()
+#     correct = 0
+#     for data in loader:
+#         data = data.to(device)
+#         out = model.model_forward(data, device)
+#         pred = out.argmax(dim=1)
+#         correct += int((pred == data.y).sum())
+#     return correct / len(loader.dataset)
 
 
 class GraphClassification(BaseTask):
@@ -65,7 +72,6 @@ class GraphClassification(BaseTask):
         self.val_dataset = val_dataset
         self.test_dataset = test_dataset
         self.model_zoo = model_zoo
-        # self.model_zoo.model_init(self.dataset)
         self.model = self.model_zoo.model_init().to(device)
         self.optimizer = Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
         self.epochs = epochs
@@ -73,9 +79,11 @@ class GraphClassification(BaseTask):
         self.device = device
         self.criterion = nn.CrossEntropyLoss()
         self.train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True,
-                                       collate_fn=graph_collate)
-        self.val_loader = DataLoader(val_dataset, batch_size=eval_batch_size, shuffle=False, collate_fn=graph_collate)
-        self.test_loader = DataLoader(test_dataset, batch_size=eval_batch_size, shuffle=False, collate_fn=graph_collate)
+                                       collate_fn=graph_collate, num_workers=6, pin_memory=True)
+        self.val_loader = DataLoader(val_dataset, batch_size=eval_batch_size, shuffle=False, collate_fn=graph_collate,
+                                     num_workers=6, pin_memory=True)
+        self.test_loader = DataLoader(test_dataset, batch_size=eval_batch_size, shuffle=False, collate_fn=graph_collate,
+                                      num_workers=6, pin_memory=True)
 
         total_epochs_time = []
         two_hundred_epoch_time = []
