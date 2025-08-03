@@ -21,7 +21,13 @@ def graph_cls_train(model, loader, device, optimizer, loss_fn):
         label = label.to(device)
         optimizer.zero_grad()
         # out = model(data)
-        out = model.model_forward(data, device)
+        out_list = []
+        for graph in data:
+            # for g in graph:
+            out = model.model_forward(graph, device)
+            out_list.append(out)
+        out = torch.cat(out_list)
+        # out = model.model_forward(data, device)
         loss = loss_fn(out, label)
         loss.backward()
         optimizer.step()
@@ -35,7 +41,13 @@ def graph_cls_evaluate(model, loader, device):
     correct = 0
     for data in loader:
         data = data.to(device)
-        out = model.model_forward(data, device)
+        out_list = []
+        for graph in data:
+            # for g in graph:
+            out = model.model_forward(graph, device)
+            out_list.append(out)
+        out = torch.cat(out_list)
+        # out = model.model_forward(data, device)
         pred = out.argmax(dim=1)
         correct += int((pred == data.y).sum())
     return correct / len(loader.dataset)
