@@ -3,7 +3,7 @@ import numpy as np
 import torch
 
 import scipy
-print("SciPy version:", scipy.__version__)
+# print("SciPy version:", scipy.__version__)
 
 from torch_scatter import scatter_add
 from torch_sparse import coalesce
