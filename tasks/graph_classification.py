@@ -138,9 +138,6 @@ class GraphClassification(BaseTask):
 
         t_total = time.time()
         for epoch in tqdm(range(start_epoch, self.epochs)):
-            if stop > self.early_stop:
-                self.logger.info("Early stop!")
-                break
             t = time.time()
 
             loss_train = graph_cls_train(self.model, self.train_loader, self.device, self.optimizer, self.criterion)
@@ -170,8 +167,11 @@ class GraphClassification(BaseTask):
                     'best_test_acc': best_test,
                 }, checkpoint_path)
                 self.logger.info(f"Epoch {epoch+1}: New best validation accuracy: {best_val:.4f}. Checkpoint saved.")
-
-            stop += 1
+            else:
+                stop += 1
+            if stop >= self.early_stop:
+                self.logger.info(f"Early stopping at epoch {epoch + 1} after {self.early_stop} epochs of no improvement.")
+                break
 
         if self.normalize_times == 1:
             self.logger.info("Optimization Finished!")
