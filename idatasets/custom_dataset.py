@@ -50,7 +50,7 @@ class CustomDataset(Dataset):
                 A_pdc = np.array(f['connectivity'])
         else:
             A_pdc = sio.loadmat(args.pdc_path)['data']
-            A_pdc = np.random.random(A_pdc.shape)
+            # A_pdc = np.random.random(A_pdc.shape)
 
         # load features
         feat_mat = os.path.join(args.feature_root_dir,
